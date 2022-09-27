@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sist.mapper.ask-mapper">
+	<!-- 장소별 문의 목록 가져오기 -->
+	<select id="askListData" resultType="AskVO" parameterType="hashmap">
+		SELECT place_no, no, member_id, content, TO_CHAR(regdate,'YYYY-MM-DD') as dbday, isreply,place_img, group_id, group_tab, num
+		FROM (SELECT place_no, no, member_id, content, regdate, isreply,place_img, group_id, group_tab, rownum as num
+		    FROM (SELECT place_no, no, member_id, content, regdate, isreply,place_img, group_id, group_tab
+		    FROM askboard_3 WHERE place_no = #{place_no} ORDER BY group_id DESC, group_step ASC ))
+		WHERE group_id in (select group_id
+							from (select group_id, rownum as num from askboard_3 where group_step=0 and place_no= #{place_no})
+							where num between #{start} and #{end})
+	</select>
+	<!-- 장소별 문의 수 가져오기  -->
+	<select id="askCount" resultType="int" parameterType="int">
+		SELECT COUNT(*)
+		FROM askboard_3
+		WHERE place_no=#{place_no}  AND group_step=0
+	</select>
+	<select id="askTotalCount" resultType="int" parameterType="int">
+		SELECT COUNT(*)
+		FROM askboard_3
+		WHERE place_no=#{place_no}
+	</select>
+	<!-- 문의 등록하기 -->
+	<insert id="askInsert" parameterType="AskVO">
+		<selectKey keyProperty="no" resultType="int" order="BEFORE">
+			SELECT NVL(MAX(no)+1,1) as no FROM askboard_3
+		</selectKey>
+		INSERT INTO askboard_3(no,member_id,content,group_id,place_no,place_img, place_name)
+		VALUES(#{no},#{member_id},#{content},(SELECT NVL(MAX(group_id)+1,1) as group_id FROM askboard_3),#{place_no},#{place_img},#{place_name})
+	</insert>
+	<!-- [관리자] 문의글 목록-->
+	<select id="admin_askReplyListData" resultType="AskVO" parameterType="hashmap">
+		SELECT no, content, member_id, TO_CHAR(regdate,'YYYY-MM-DD') as dbday, place_img, place_name, place_no, num
+		FROM (SELECT no, content, member_id, regdate,place_img, place_name, place_no, rownum as num
+			FROM (SELECT no, content, member_id, regdate,place_img, place_name, place_no
+				FROM askboard_3 WHERE isReply!=1 AND group_step!=1 ORDER BY no DESC))
+		WHERE num BETWEEN #{start} AND #{end}
+	</select>
+	<!-- [관리자] 문의글 총 개수 가져오기 -->
+	<select id="admin_askTotalCount" resultType="int">
+		SELECT COUNT(*) FROM askboard_3
+		WHERE isReply!=1 AND group_step!=1
+	</select>
+	<!-- [관리자] 문의 상세내용 가져오기 -->
+	<select id="admin_askDetailData" resultType="AskVO" parameterType="int">
+		SELECT no, member_id, TO_CHAR(regdate,'YYYY-MM-DD') as dbday, content, place_img, place_name, place_no,group_id
+		FROM askboard_3
+		WHERE no=#{no}
+	</select>
+	<!-- [관리자] 문의 달기 전 group_id 얻기-->
+	<select id="admin_getGroupId" resultType="int" parameterType="int">
+		SELECT group_id FROM askboard_3
+		WHERE no=#{no}
+	</select>
+	<!-- [관리자] 문의글 답변 등록 -->
+	<insert id="admin_askReplyInsert" parameterType="AskVO">
+		<selectKey keyProperty="no" resultType="int" order="BEFORE">
+			SELECT NVL(MAX(no)+1,1) as no FROM askboard_3
+		</selectKey>
+		INSERT INTO askboard_3(no,member_id,content,group_id, group_step, group_tab, place_no)
+		VALUES(#{no},#{member_id},#{content},#{group_id},1,1,#{place_no})
+	</insert>
+	<!-- [관리자] 문의글 답변 등록 후 isReply 수정 -->
+	<update id="admin_askReplyIsReply" parameterType="int">
+		UPDATE askboard_3 SET
+		isReply = 1
+		WHERE no=#{no}
+	</update>
+	<!-- [관리자] 부적절한 문의글 삭제 -->
+	<update id="admin_askDelete" parameterType="int">
+		UPDATE askboard_3 SET
+		isReply = 1,
+		content ='관리자에 의해 삭제 되었습니다.'
+		WHERE no=#{no}
+	</update>
+	<!-- [유저] 자기가 올린 문의글 목록 가져오기 -->
+	<select id="user_askListData" resultType="AskVO" parameterType="hashmap">
+		SELECT no, content, member_id, TO_CHAR(regdate,'YYYY-MM-DD') as dbday, place_img, place_name, place_no, group_id, isReply, num
+		FROM (SELECT no, content, member_id, regdate,place_img, place_name, place_no, group_id, isReply,rownum as num
+		FROM (SELECT no, content, member_id, regdate,place_img, place_name, place_no, group_id,isReply
+		FROM askboard_3 WHERE member_id=#{member_id} ORDER BY no DESC))
+		WHERE num BETWEEN #{start} AND #{end}
+	</select>
+	<!-- [유저] 자기가 올린 문의글 개수 -->
+	<select id="user_askTotalCount" resultType="int" parameterType="String">
+		SELECT COUNT(*) as count
+		FROM askboard_3 WHERE member_id=#{member_id}
+	</select>
+	<!-- [유저] 마이페이지:자기가 올린 문의글 삭제 -->
+	<delete id="user_askDelete" parameterType="int">
+		DELETE FROM askboard_3
+		WHERE group_id=#{group_id}
+	</delete>
+	<!-- 삭제할 group_id 가져오기 -->
+	<select id="user_getGroupId" resultType="int" parameterType="AskVO">
+		SELECT group_id FROM askboard_3
+		WHERE no=#{no}
+	</select>
+	<!-- 문의글 답변 불러오기 -->
+	<select id="user_GetReply" resultType="AskVO" parameterType="int">
+	  SELECT content,member_id, TO_CHAR(regdate,'YYYY-MM-DD') as dbday, place_img, place_name
+	  FROM askboard_3
+	  WHERE group_id=#{group_id} AND group_step=1
+	</select>
+</mapper>
